@@ -5,4 +5,6 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.23", features = ["derive"] }
+colored = "2.1.0"
+diff-match-patch-rs = "0.3.2"
 text-diff = "0.4.0"

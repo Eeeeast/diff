@@ -1,6 +1,10 @@
 use clap::{Parser, ValueEnum};
+use colored::Colorize;
+use core::str;
+use diff_match_patch_rs::*;
 use std::fmt::Debug;
-use text_diff::print_diff;
+use std::fs;
+use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -25,23 +29,60 @@ enum Mode {
     Batch,
 }
 
+fn diff(left: &str, right: &str) {
+    let dmp = DiffMatchPatch::new();
+    match dmp.diff_main::<Compat>(left, right) {
+        Ok(diffs) => {
+            for diff in diffs {
+                match diff.op() {
+                    Ops::Delete => {
+                        print!("{}", diff.data().iter().copied().collect::<String>().red())
+                    }
+                    Ops::Equal => {
+                        print!("{}", diff.data().iter().copied().collect::<String>())
+                    }
+                    Ops::Insert => {
+                        print!(
+                            "{}",
+                            diff.data().iter().copied().collect::<String>().green()
+                        )
+                    }
+                }
+            }
+        }
+        Err(e) => panic!("{:?}", e),
+    }
+}
+
 fn main() {
     let mut cli: Cli = Cli::parse();
     println!("{:?}", cli);
     println!();
     loop {
         match cli.mode {
-            Mode::Standart => cli.mode = Mode::Interactive,
+            Mode::Standart => {
+                if Path::new(&cli.left).is_file() && Path::new(&cli.right).is_file() {
+                    cli.mode = Mode::Batch;
+                } else {
+                    cli.mode = Mode::Interactive;
+                }
+            }
             Mode::Program => {
-                cli.mode = Mode::Interactive;
                 break;
             }
             Mode::Interactive => {
-                print_diff(&cli.left, &cli.right, " ");
+                diff(&cli.left, &cli.right);
                 break;
             }
             Mode::Batch => {
-                cli.mode = Mode::Interactive;
+                diff(
+                    &fs::read_to_string(&cli.left).unwrap_or_else(|_| {
+                        panic!("Was supposed to read the {:?} file", Path::new(&cli.left))
+                    }),
+                    &fs::read_to_string(&cli.right).unwrap_or_else(|_| {
+                        panic!("Was supposed to read the {:?} file", Path::new(&cli.right))
+                    }),
+                );
                 break;
             }
         };
