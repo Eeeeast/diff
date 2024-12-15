@@ -24,7 +24,20 @@ struct Cli {
 enum Mode {
     /// Automatic comparison based on specified rules
     Standart,
-    /// Executing the specified console program to compare the provided I/O value pairs
+    /** Executing the specified console program to compare the provided I/O value pairs
+    Expected toml file and application path
+    Example toml file with all arguments optional:
+    [[tests]]
+    note = "test 1"
+    arguments = "arguments"
+    input = "input"
+    out = "output"
+    [[tests]]
+    note = "test 2"
+    arguments = "arguments"
+    input = "input"
+    out = "output" **/
+    #[clap(verbatim_doc_comment)]
     Program,
     /// Comparison of directly entered data
     Interactive,
@@ -84,7 +97,14 @@ fn main() {
         match cli.mode {
             Mode::Standart => {
                 if Path::new(&cli.left).is_file() && Path::new(&cli.right).is_file() {
-                    cli.mode = Mode::Batch;
+                    if Path::new(&cli.left)
+                        .extension()
+                        .is_some_and(|n| n.eq("toml"))
+                    {
+                        cli.mode = Mode::Program;
+                    } else {
+                        cli.mode = Mode::Batch;
+                    }
                 } else {
                     cli.mode = Mode::Interactive;
                 }
