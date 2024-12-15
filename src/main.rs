@@ -2,9 +2,12 @@ use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use core::str;
 use diff_match_patch_rs::*;
+use serde::Deserialize;
 use std::fmt::Debug;
 use std::fs;
+use std::io::Write;
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -29,6 +32,19 @@ enum Mode {
     Batch,
 }
 
+#[derive(Deserialize, Debug)]
+struct Config {
+    tests: Vec<Test>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Test {
+    note: Option<String>,
+    arguments: Option<String>,
+    input: Option<String>,
+    out: Option<String>,
+}
+
 fn diff(left: &str, right: &str) {
     let dmp = DiffMatchPatch::new();
     match dmp.diff_main::<Compat>(left, right) {
@@ -36,15 +52,21 @@ fn diff(left: &str, right: &str) {
             for diff in diffs {
                 match diff.op() {
                     Ops::Delete => {
-                        print!("{}", diff.data().iter().copied().collect::<String>().red())
+                        print!(
+                            "{}",
+                            diff.data().iter().copied().collect::<String>().on_red()
+                        )
                     }
                     Ops::Equal => {
-                        print!("{}", diff.data().iter().copied().collect::<String>())
+                        print!(
+                            "{}",
+                            diff.data().iter().copied().collect::<String>().normal()
+                        )
                     }
                     Ops::Insert => {
                         print!(
                             "{}",
-                            diff.data().iter().copied().collect::<String>().green()
+                            diff.data().iter().copied().collect::<String>().on_cyan()
                         )
                     }
                 }
@@ -68,6 +90,37 @@ fn main() {
                 }
             }
             Mode::Program => {
+                let config: Config =
+                    toml::from_str(&fs::read_to_string(&cli.left).unwrap_or_else(|_| {
+                        panic!("Was supposed to read the {:?} file", Path::new(&cli.left))
+                    }))
+                    .unwrap_or_else(|_| {
+                        panic!("Failed to read .toml file {:?}", Path::new(&cli.left));
+                    });
+                for test in config.tests {
+                    println!("{}", &test.note.unwrap_or("".to_string()));
+                    let mut child = Command::new(&cli.right)
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .args(test.arguments)
+                        .spawn()
+                        .expect("Failed to spawn child process");
+
+                    let mut stdin = child.stdin.take().expect("Failed to open stdin");
+                    if let Some(input) = test.input {
+                        std::thread::spawn(move || {
+                            stdin
+                                .write_all(input.as_bytes())
+                                .expect("Failed to write to stdin");
+                        });
+                    }
+                    let output = child.wait_with_output().expect("Failed to read stdout");
+                    diff(
+                        &test.out.unwrap_or("".to_string()),
+                        &String::from_utf8_lossy(&output.stdout),
+                    );
+                    println!();
+                }
                 break;
             }
             Mode::Interactive => {
