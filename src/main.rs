@@ -24,14 +24,14 @@ struct Cli {
 enum Mode {
     /// Automatic comparison based on specified rules
     Standart,
-    /** Executing the specified console program to compare the provided I/O value pairs
-    Expected toml file and application path
-    Example toml file with all arguments optional:
-    [[tests]]
-    note = "test 1"
-    arguments = "arguments"
-    input = "input"
-    out = "output" **/
+    /// Executing the specified console program to compare the provided I/O value pairs
+    /// Expected toml file and application path
+    /// Example toml file with all arguments optional:
+    /// [[tests]]
+    /// note = "test 1"
+    /// arguments = "arguments"
+    /// input = "input"
+    /// out = "output"
     #[clap(verbatim_doc_comment)]
     Program,
     /// Comparison of directly entered data
@@ -58,26 +58,14 @@ fn diff(left: &str, right: &str) {
     match dmp.diff_main::<Compat>(left, right) {
         Ok(diffs) => {
             for diff in diffs {
-                match diff.op() {
-                    Ops::Delete => {
-                        print!(
-                            "{}",
-                            diff.data().iter().copied().collect::<String>().on_red()
-                        )
+                print!(
+                    "{}",
+                    match diff.op() {
+                        Ops::Delete => diff.data().iter().copied().collect::<String>().on_red(),
+                        Ops::Equal => diff.data().iter().copied().collect::<String>().normal(),
+                        Ops::Insert => diff.data().iter().copied().collect::<String>().on_cyan(),
                     }
-                    Ops::Equal => {
-                        print!(
-                            "{}",
-                            diff.data().iter().copied().collect::<String>().normal()
-                        )
-                    }
-                    Ops::Insert => {
-                        print!(
-                            "{}",
-                            diff.data().iter().copied().collect::<String>().on_cyan()
-                        )
-                    }
-                }
+                )
             }
         }
         Err(e) => panic!("{:?}", e),
@@ -105,13 +93,18 @@ fn main() {
                 }
             }
             Mode::Program => {
-                let config: Config =
-                    toml::from_str(&fs::read_to_string(&cli.left).unwrap_or_else(|_| {
-                        panic!("Was supposed to read the {:?} file", Path::new(&cli.left))
-                    }))
-                    .unwrap_or_else(|_| {
-                        panic!("Failed to read .toml file {:?}", Path::new(&cli.left));
-                    });
+                let tests = Path::new(&cli.left);
+                let config: Config = match tests.extension().and_then(std::ffi::OsStr::to_str) {
+                    Some("toml") => {
+                        toml::from_str(&fs::read_to_string(&cli.left).unwrap_or_else(|_| {
+                            panic!("Was supposed to read the {:?} file", Path::new(&cli.left))
+                        }))
+                        .unwrap_or_else(|_| {
+                            panic!("Failed to read .toml file {:?}", Path::new(&cli.left));
+                        })
+                    }
+                    _ => panic!("Unexpected {:?} file with tests", tests),
+                };
                 for test in config.tests {
                     println!("{}", &test.note.unwrap_or("".to_string()));
                     let mut child = Command::new(&cli.right)
@@ -120,9 +113,8 @@ fn main() {
                         .args(test.arguments)
                         .spawn()
                         .expect("Failed to spawn child process");
-
-                    let mut stdin = child.stdin.take().expect("Failed to open stdin");
                     if let Some(input) = test.input {
+                        let mut stdin = child.stdin.take().expect("Failed to open stdin");
                         std::thread::spawn(move || {
                             stdin
                                 .write_all(input.as_bytes())
