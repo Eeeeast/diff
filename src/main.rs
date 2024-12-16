@@ -31,11 +31,6 @@ enum Mode {
     note = "test 1"
     arguments = "arguments"
     input = "input"
-    out = "output"
-    [[tests]]
-    note = "test 2"
-    arguments = "arguments"
-    input = "input"
     out = "output" **/
     #[clap(verbatim_doc_comment)]
     Program,
