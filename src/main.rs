@@ -105,28 +105,33 @@ fn main() {
                     }
                     _ => panic!("Unexpected {:?} file with tests", tests),
                 };
-                for test in config.tests {
-                    println!("{}", &test.note.unwrap_or("".to_string()));
-                    let mut child = Command::new(&cli.right)
-                        .stdin(Stdio::piped())
-                        .stdout(Stdio::piped())
-                        .args(test.arguments)
-                        .spawn()
-                        .expect("Failed to spawn child process");
-                    if let Some(input) = test.input {
-                        let mut stdin = child.stdin.take().expect("Failed to open stdin");
-                        std::thread::spawn(move || {
-                            stdin
-                                .write_all(input.as_bytes())
-                                .expect("Failed to write to stdin");
-                        });
+                match std::fs::canonicalize(&cli.right) {
+                    Ok(app) => {
+                        for test in config.tests {
+                            println!("{}", &test.note.unwrap_or("".to_string()));
+                            let mut child = Command::new(&app)
+                                .stdin(Stdio::piped())
+                                .stdout(Stdio::piped())
+                                .args(test.arguments)
+                                .spawn()
+                                .expect("Failed to spawn child process");
+                            if let Some(input) = test.input {
+                                let mut stdin = child.stdin.take().expect("Failed to open stdin");
+                                std::thread::spawn(move || {
+                                    stdin
+                                        .write_all(input.as_bytes())
+                                        .expect("Failed to write to stdin");
+                                });
+                            }
+                            let output = child.wait_with_output().expect("Failed to read stdout");
+                            diff(
+                                &test.out.unwrap_or("".to_string()),
+                                &String::from_utf8_lossy(&output.stdout),
+                            );
+                            println!();
+                        }
                     }
-                    let output = child.wait_with_output().expect("Failed to read stdout");
-                    diff(
-                        &test.out.unwrap_or("".to_string()),
-                        &String::from_utf8_lossy(&output.stdout),
-                    );
-                    println!();
+                    Err(e) => panic!("{}", e),
                 }
                 break;
             }
