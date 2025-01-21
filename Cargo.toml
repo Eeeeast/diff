@@ -1,0 +1,11 @@
+[package]
+name = "diff"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.5.23", features = ["derive"] }
+colored = "2.2.0"
+diff-match-patch-rs = "0.3.2"
+serde = { version = "1.0.217", features = ["derive"] }
+toml = "0.8.19"
