@@ -134,10 +134,7 @@ fn files_diff(left: &str, right: &str) -> Result<DiffVec, DiffFilesError> {
     let right = &fs::read_to_string(right);
     match left {
         Ok(l) => match right {
-            Ok(r) => match diff(l, r) {
-                Ok(o) => Ok(o),
-                Err(e) => Err(DiffFilesError::Diff(e)),
-            },
+            Ok(r) => Ok(diff(l, r).map_err(DiffFilesError::Diff)?),
             Err(_) => Err(DiffFilesError::RightRead),
         },
         Err(_) if right.is_err() => Err(DiffFilesError::BothRead),
