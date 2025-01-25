@@ -257,14 +257,13 @@ fn main() {
             path: Some(file),
             count: number,
         } => match fs::File::create_new(file.clone()) {
-            Ok(mut file) => match file.write_all(
-                serialize_test_data(number)
-                    .expect("Serialisation error unexpected")
-                    .as_bytes(),
-            ) {
-                Ok(_) => (),
-                Err(e) => panic!("Error. {}", e),
-            },
+            Ok(mut file) => file
+                .write_all(
+                    serialize_test_data(number)
+                        .expect("Serialisation error unexpected")
+                        .as_bytes(),
+                )
+                .unwrap(),
             Err(e) => {
                 panic!(
                     "This {} file already exists. Only creating a new file is allowed. {}",
