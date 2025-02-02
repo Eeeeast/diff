@@ -168,8 +168,8 @@ fn main() {
             Ok(o) => {
                 for test in o.tests.into_iter() {
                     match &test.note {
-                        Some(note) => println!("{}", note),
-                        None => println!("test!"),
+                        Some(note) => println!("{}", note.on_green()),
+                        None => println!("{}", "test!".on_green()),
                     }
                     let mut child = Command::new(&o.app)
                         .stdin(Stdio::piped())
@@ -198,12 +198,10 @@ fn main() {
             Err(DiffProgramError::LeftRead) => {
                 panic!("Failed to run this {}", Path::new(&left).display())
             }
-            Err(DiffProgramError::RightRead) => {
-                panic!(
-                    "Could not read these {} I/O pairs",
-                    Path::new(&right).display()
-                )
-            }
+            Err(DiffProgramError::RightRead) => panic!(
+                "Could not read these {} I/O pairs",
+                Path::new(&right).display()
+            ),
             Err(DiffProgramError::RightParse(e)) => panic!(
                 "Failed to deserialise this file {}. {:?}",
                 Path::new(&right).display(),
@@ -253,31 +251,20 @@ fn main() {
                 Err(e) => panic!("{:?}", e),
             },
         },
-        Commands::Example {
-            path: Some(file),
-            count: number,
-        } => match fs::File::create_new(file.clone()) {
-            Ok(mut file) => file
-                .write_all(
-                    serialize_test_data(number)
-                        .expect("Serialisation error unexpected")
-                        .as_bytes(),
-                )
-                .unwrap(),
-            Err(e) => {
-                panic!(
-                    "This {} file already exists. Only creating a new file is allowed. {}",
-                    file.display(),
-                    e
-                )
+        Commands::Example { path, count } => {
+            let data = serialize_test_data(count).expect("Serialisation error unexpected");
+            if let Some(file) = path {
+                match fs::File::create_new(file.clone()) {
+                    Ok(mut file) => file.write_all(data.as_bytes()).unwrap(),
+                    Err(e) => panic!(
+                        "This {} file already exists. Only creating a new file is allowed. {}",
+                        file.display(),
+                        e
+                    ),
+                }
+            } else {
+                println!("{}", data)
             }
-        },
-        Commands::Example {
-            path: None,
-            count: number,
-        } => println!(
-            "{}",
-            serialize_test_data(number).expect("Serialisation error unexpected")
-        ),
+        }
     }
 }
