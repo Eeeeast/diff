@@ -9,7 +9,7 @@ A simple command-line tool for computing diffs between strings, files, or progra
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your-repo/diff.git
+   git clone https://github.com/Eeeeast/diff
    cd diff
    ```
 
