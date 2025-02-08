@@ -1,4 +1,5 @@
 use crate::dmp::Diff;
+use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use diff_match_patch_rs::*;
@@ -10,7 +11,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 #[derive(Debug, Parser)]
-#[command(version, about)]
+#[command(version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     cmd: Commands,
@@ -18,40 +19,147 @@ struct Cli {
 
 #[derive(Debug, clap::Subcommand)]
 enum Commands {
-    /// Get the diff
+    /// Get the diff between two inputs
     Get {
-        /// What is being compared
+        /// Left input (file or string)
         left: String,
-        /// What's being compared to
+        /// Right input (file or string)
         right: String,
         /// Compare mode
-        #[clap(short, long, value_enum)]
-        mode: Option<Mode>,
+        #[clap(short, long, value_enum, default_value_t = Mode::Interactive)]
+        mode: Mode,
     },
-    /// Get example of n I/O pairs to test
+    /// Generate example test cases
     Example {
-        /// How many tests
+        /// Number of test cases to generate
         count: u16,
-        /// Where to save
+        /// Output file path
         path: Option<std::path::PathBuf>,
     },
 }
 
 #[derive(ValueEnum, Clone, Debug)]
 enum Mode {
-    /// Run the program in the console to compare the given I/O value pairs
-    /// Example of a file containing all optional variables
-    /// [[tests]]
-    /// note = "test"
-    /// args = "arguments"
-    /// input = "input"
-    /// out = "output"
-    #[clap(verbatim_doc_comment)]
+    /// Run the programme in the console to run the tests
     Program,
     /// Compare directly entered data
     Interactive,
     /// Compare a specified pair of files
     Batch,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+struct Test {
+    note: Option<String>,
+    args: Option<String>,
+    input: Option<String>,
+    out: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+struct Tests {
+    tests: Vec<Test>,
+}
+
+struct Tester {
+    app: std::path::PathBuf,
+    tests: Vec<Test>,
+}
+
+impl Tester {
+    /// Constructs a new `Tester` instance by reading the program path and test cases from a TOML file.
+    ///
+    /// # Arguments
+    /// * `program_path` - The path to the executable program.
+    /// * `test_file` - The path to the TOML file containing test cases.
+    ///
+    /// # Returns
+    /// A `Result` containing the `Tester` instance or an error if something goes wrong.
+    pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
+        // Canonicalize the program path
+        let app = fs::canonicalize(program_path).context("Failed to canonicalize program path")?;
+
+        // Read and parse the TOML file containing test cases
+        let content = fs::read_to_string(test_file).context("Failed to read test file")?;
+        let tests: Tests = toml::from_str(&content).context("Failed to parse TOML file")?;
+
+        Ok(Self {
+            app,
+            tests: tests.tests,
+        })
+    }
+}
+
+fn read_file(path: &str) -> Result<String> {
+    fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path))
+}
+
+fn write_file(path: &Path, data: &str) -> Result<()> {
+    fs::write(path, data).with_context(|| format!("Failed to write to file: {}", path.display()))
+}
+
+fn serialize_test_data(number: u16) -> Result<String> {
+    toml::to_string::<Tests>(&Tests {
+        tests: vec![
+            Test {
+                note: Some("test".to_string()),
+                args: Some("arguments".to_string()),
+                input: Some("input".to_string()),
+                out: Some("output".to_string()),
+            };
+            number.into()
+        ],
+    })
+    .context("Failed to serialize test data")
+}
+
+#[derive(Debug)]
+struct DiffMatchPatchError(diff_match_patch_rs::Error);
+
+impl fmt::Display for DiffMatchPatchError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "DiffMatchPatch Error: {:?}", self.0)
+    }
+}
+
+impl std::error::Error for DiffMatchPatchError {}
+
+fn diff(left: &str, right: &str) -> Result<DiffVec> {
+    let dmp = DiffMatchPatch::new();
+    let result = dmp
+        .diff_main::<Compat>(left, right)
+        .map_err(DiffMatchPatchError)?;
+    Ok(DiffVec(result))
+}
+
+fn files_diff(left: &str, right: &str) -> Result<DiffVec> {
+    let left_content = read_file(left)?;
+    let right_content = read_file(right)?;
+    diff(&left_content, &right_content)
+}
+
+fn run_tests(tests: Vec<Test>, app: &Path) -> Result<()> {
+    for test in tests {
+        let mut child = Command::new(app)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .args(test.args.unwrap_or_default().split_whitespace())
+            .spawn()
+            .context("Failed to spawn child process")?;
+
+        if let Some(input) = test.input {
+            let mut stdin = child.stdin.take().context("Failed to open stdin")?;
+            stdin
+                .write_all(input.as_bytes())
+                .context("Failed to write to stdin")?;
+        }
+
+        let output = child.wait_with_output().context("Failed to read stdout")?;
+        let expected = test.out.unwrap_or_default();
+        let diff_result = diff(&expected, &String::from_utf8_lossy(&output.stdout))?;
+        println!("{}", diff_result);
+    }
+    Ok(())
 }
 
 struct DiffVec(Vec<Diff<char>>);
@@ -73,198 +181,32 @@ impl fmt::Display for DiffVec {
     }
 }
 
-enum DiffFilesError {
-    Diff(diff_match_patch_rs::Error),
-    LeftRead,
-    RightRead,
-    BothRead,
-}
-
-enum DiffProgramError {
-    LeftRead,
-    RightRead,
-    RightParse(toml::de::Error),
-    BothRead,
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-struct Test {
-    note: Option<String>,
-    args: Option<String>,
-    input: Option<String>,
-    out: Option<String>,
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-struct Tests {
-    tests: Vec<Test>,
-}
-
-struct Tester {
-    app: std::path::PathBuf,
-    tests: Vec<Test>,
-}
-
-fn program_diff(left: &str, right: &str) -> Result<Tester, DiffProgramError> {
-    let left = fs::canonicalize(left);
-    let right = &fs::read_to_string(right);
-    match left {
-        Ok(app) => match right {
-            Ok(r) => match toml::from_str::<Tests>(r) {
-                Ok(tests) => Ok(Tester {
-                    app,
-                    tests: tests.tests,
-                }),
-                Err(e) => Err(DiffProgramError::RightParse(e)),
-            },
-            Err(_) => Err(DiffProgramError::RightRead),
-        },
-        Err(_) if right.is_err() => Err(DiffProgramError::BothRead),
-        Err(_) => Err(DiffProgramError::LeftRead),
-    }
-}
-
-fn diff(left: &str, right: &str) -> Result<DiffVec, diff_match_patch_rs::Error> {
-    let dmp = DiffMatchPatch::new();
-    Ok(DiffVec(dmp.diff_main::<Compat>(left, right)?))
-}
-
-fn files_diff(left: &str, right: &str) -> Result<DiffVec, DiffFilesError> {
-    let left = &fs::read_to_string(left);
-    let right = &fs::read_to_string(right);
-    match left {
-        Ok(l) => match right {
-            Ok(r) => Ok(diff(l, r).map_err(DiffFilesError::Diff)?),
-            Err(_) => Err(DiffFilesError::RightRead),
-        },
-        Err(_) if right.is_err() => Err(DiffFilesError::BothRead),
-        Err(_) => Err(DiffFilesError::LeftRead),
-    }
-}
-
-fn serialize_test_data(number: u16) -> Result<String, toml::ser::Error> {
-    toml::to_string::<Tests>(&Tests {
-        tests: vec![
-            Test {
-                note: Some("test".to_string()),
-                args: Some("arguments".to_string()),
-                input: Some("input".to_string()),
-                out: Some("output".to_string()),
-            };
-            number.into()
-        ],
-    })
-}
-
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
-    println!("{:?}", cli);
+
     match cli.cmd {
-        Commands::Get {
-            left,
-            right,
-            mode: Some(Mode::Program),
-        } => match program_diff(&left, &right) {
-            Ok(o) => {
-                for test in o.tests.into_iter() {
-                    match &test.note {
-                        Some(note) => println!("{}", note.on_green()),
-                        None => println!("{}", "test!".on_green()),
-                    }
-                    let mut child = Command::new(&o.app)
-                        .stdin(Stdio::piped())
-                        .stdout(Stdio::piped())
-                        .args(&test.args)
-                        .spawn()
-                        .expect("Failed to spawn child process");
-                    if let Some(input) = test.input {
-                        let mut stdin = child.stdin.take().expect("Failed to open stdin");
-                        std::thread::spawn(move || {
-                            stdin
-                                .write_all(input.as_bytes())
-                                .expect("Failed to write to stdin");
-                        });
-                    }
-                    let output = child.wait_with_output().expect("Failed to read stdout");
-                    match diff(
-                        &test.out.unwrap_or("".to_string()),
-                        &String::from_utf8_lossy(&output.stdout),
-                    ) {
-                        Ok(o) => println!("{}", o),
-                        Err(e) => panic!("{:?}", e),
-                    };
-                }
+        Commands::Get { left, right, mode } => match mode {
+            Mode::Program => {
+                let tester = Tester::new(&left, &right)?;
+                run_tests(tester.tests, &tester.app)?;
             }
-            Err(DiffProgramError::LeftRead) => {
-                panic!("Failed to run this {}", Path::new(&left).display())
+            Mode::Interactive => {
+                let result = diff(&left, &right)?;
+                println!("{}", result);
             }
-            Err(DiffProgramError::RightRead) => panic!(
-                "Could not read these {} I/O pairs",
-                Path::new(&right).display()
-            ),
-            Err(DiffProgramError::RightParse(e)) => panic!(
-                "Failed to deserialise this file {}. {:?}",
-                Path::new(&right).display(),
-                e
-            ),
-            Err(DiffProgramError::BothRead) => panic!(
-                "Failed to read this {} program and these {} I/O pairs",
-                Path::new(&left).display(),
-                Path::new(&right).display()
-            ),
-        },
-        Commands::Get {
-            left,
-            right,
-            mode: Some(Mode::Interactive),
-        } => match diff(&left, &right) {
-            Ok(o) => println!("{}", o),
-            Err(e) => panic!("{:?}", e),
-        },
-        Commands::Get {
-            left,
-            right,
-            mode: Some(Mode::Batch),
-        } => match files_diff(&left, &right) {
-            Ok(o) => println!("{}", o),
-            Err(DiffFilesError::Diff(e)) => panic!("{:?}", e),
-            Err(DiffFilesError::LeftRead) => {
-                panic!("Could not read this {} file", Path::new(&left).display())
+            Mode::Batch => {
+                let result = files_diff(&left, &right)?;
+                println!("{}", result);
             }
-            Err(DiffFilesError::RightRead) => {
-                panic!("Could not read this {} file", Path::new(&right).display())
-            }
-            Err(DiffFilesError::BothRead) => panic!(
-                "Could not read these {}, {} files",
-                Path::new(&left).display(),
-                Path::new(&right).display()
-            ),
-        },
-        Commands::Get {
-            left,
-            right,
-            mode: None,
-        } => match files_diff(&left, &right) {
-            Ok(o) => println!("{}", o),
-            Err(_) => match diff(&left, &right) {
-                Ok(o) => println!("{}", o),
-                Err(e) => panic!("{:?}", e),
-            },
         },
         Commands::Example { path, count } => {
-            let data = serialize_test_data(count).expect("Serialisation error unexpected");
+            let data = serialize_test_data(count)?;
             if let Some(file) = path {
-                match fs::File::create_new(file.clone()) {
-                    Ok(mut file) => file.write_all(data.as_bytes()).unwrap(),
-                    Err(e) => panic!(
-                        "This {} file already exists. Only creating a new file is allowed. {}",
-                        file.display(),
-                        e
-                    ),
-                }
+                write_file(&file, &data)?;
             } else {
-                println!("{}", data)
+                println!("{}", data);
             }
         }
     }
+    Ok(())
 }
