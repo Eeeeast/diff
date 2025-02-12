@@ -157,6 +157,11 @@ fn run_tests(tests: Vec<Test>, app: &Path) -> Result<()> {
         let output = child.wait_with_output().context("Failed to read stdout")?;
         let expected = test.out.unwrap_or_default();
         let diff_result = diff(&expected, &String::from_utf8_lossy(&output.stdout))?;
+        if let Some(note) = test.note {
+            println!("{}", note);
+        } else {
+            println!("test");
+        }
         println!("{}", diff_result);
     }
     Ok(())
