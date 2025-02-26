@@ -1,10 +1,8 @@
-use crate::dmp::Diff;
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use diff_match_patch_rs::*;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
@@ -67,25 +65,14 @@ struct Tester {
 }
 
 impl Tester {
-    /// Constructs a new `Tester` instance by reading the program path and test cases from a TOML file.
-    ///
-    /// # Arguments
-    /// * `program_path` - The path to the executable program.
-    /// * `test_file` - The path to the TOML file containing test cases.
-    ///
-    /// # Returns
-    /// A `Result` containing the `Tester` instance or an error if something goes wrong.
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
-        // Canonicalize the program path
         let app = fs::canonicalize(program_path).context("Failed to canonicalize program path")?;
-
-        // Read and parse the TOML file containing test cases
         let content = fs::read_to_string(test_file).context("Failed to read test file")?;
-        let tests: Tests = toml::from_str(&content).context("Failed to parse TOML file")?;
-
         Ok(Self {
             app,
-            tests: tests.tests,
+            tests: toml::from_str::<Tests>(&content)
+                .context("Failed to parse TOML file")?
+                .tests,
         })
     }
 }
@@ -98,8 +85,8 @@ fn write_file(path: &Path, data: &str) -> Result<()> {
     fs::write(path, data).with_context(|| format!("Failed to write to file: {}", path.display()))
 }
 
-fn serialize_test_data(number: u16) -> Result<String> {
-    toml::to_string::<Tests>(&Tests {
+fn serialize_test_data(count: u16) -> Result<String> {
+    toml::to_string(&Tests {
         tests: vec![
             Test {
                 note: Some("test".to_string()),
@@ -107,7 +94,7 @@ fn serialize_test_data(number: u16) -> Result<String> {
                 input: Some("input".to_string()),
                 out: Some("output".to_string()),
             };
-            number.into()
+            count.into()
         ],
     })
     .context("Failed to serialize test data")
@@ -116,8 +103,8 @@ fn serialize_test_data(number: u16) -> Result<String> {
 #[derive(Debug)]
 struct DiffMatchPatchError(diff_match_patch_rs::Error);
 
-impl fmt::Display for DiffMatchPatchError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Display for DiffMatchPatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "DiffMatchPatch Error: {:?}", self.0)
     }
 }
@@ -133,9 +120,7 @@ fn diff(left: &str, right: &str) -> Result<DiffVec> {
 }
 
 fn files_diff(left: &str, right: &str) -> Result<DiffVec> {
-    let left_content = read_file(left)?;
-    let right_content = read_file(right)?;
-    diff(&left_content, &right_content)
+    diff(&read_file(left)?, &read_file(right)?)
 }
 
 fn run_tests(tests: Vec<Test>, app: &Path) -> Result<()> {
@@ -148,37 +133,31 @@ fn run_tests(tests: Vec<Test>, app: &Path) -> Result<()> {
             .context("Failed to spawn child process")?;
 
         if let Some(input) = test.input {
-            let mut stdin = child.stdin.take().context("Failed to open stdin")?;
-            stdin
-                .write_all(input.as_bytes())
-                .context("Failed to write to stdin")?;
+            child.stdin.as_mut().unwrap().write_all(input.as_bytes())?;
         }
 
-        let output = child.wait_with_output().context("Failed to read stdout")?;
+        let output = child.wait_with_output()?;
         let expected = test.out.unwrap_or_default();
         let diff_result = diff(&expected, &String::from_utf8_lossy(&output.stdout))?;
-        if let Some(note) = test.note {
-            println!("{}", note);
-        } else {
-            println!("test");
-        }
+        println!("{}", test.note.unwrap_or_else(|| "test".to_string()));
         println!("{}", diff_result);
     }
     Ok(())
 }
 
-struct DiffVec(Vec<Diff<char>>);
+struct DiffVec(Vec<crate::dmp::Diff<char>>);
 
-impl fmt::Display for DiffVec {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for diff in self.0.iter() {
+impl std::fmt::Display for DiffVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        for diff in &self.0 {
+            let text = diff.data().iter().copied().collect::<String>();
             write!(
                 f,
                 "{}",
                 match diff.op() {
-                    Ops::Delete => diff.data().iter().copied().collect::<String>().on_red(),
-                    Ops::Equal => diff.data().iter().copied().collect::<String>().normal(),
-                    Ops::Insert => diff.data().iter().copied().collect::<String>().on_cyan(),
+                    Ops::Delete => text.on_red(),
+                    Ops::Equal => text.normal(),
+                    Ops::Insert => text.on_cyan(),
                 }
             )?;
         }
@@ -193,16 +172,10 @@ fn main() -> Result<()> {
         Commands::Get { left, right, mode } => match mode {
             Mode::Program => {
                 let tester = Tester::new(&left, &right)?;
-                run_tests(tester.tests, &tester.app)?;
+                run_tests(tester.tests, &tester.app)?
             }
-            Mode::Interactive => {
-                let result = diff(&left, &right)?;
-                println!("{}", result);
-            }
-            Mode::Batch => {
-                let result = files_diff(&left, &right)?;
-                println!("{}", result);
-            }
+            Mode::Interactive => println!("{}", diff(&left, &right)?),
+            Mode::Batch => println!("{}", files_diff(&left, &right)?),
         },
         Commands::Example { path, count } => {
             let data = serialize_test_data(count)?;
