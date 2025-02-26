@@ -101,22 +101,21 @@ fn serialize_test_data(count: u16) -> Result<String> {
 }
 
 #[derive(Debug)]
-struct DiffMatchPatchError(diff_match_patch_rs::Error);
+struct DiffMatchPatchWrapper(diff_match_patch_rs::Error);
 
-impl std::fmt::Display for DiffMatchPatchError {
+impl std::fmt::Display for DiffMatchPatchWrapper {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "DiffMatchPatch Error: {:?}", self.0)
     }
 }
 
-impl std::error::Error for DiffMatchPatchError {}
+impl std::error::Error for DiffMatchPatchWrapper {}
 
 fn diff(left: &str, right: &str) -> Result<DiffVec> {
     let dmp = DiffMatchPatch::new();
-    let result = dmp
-        .diff_main::<Compat>(left, right)
-        .map_err(DiffMatchPatchError)?;
-    Ok(DiffVec(result))
+    dmp.diff_main::<Compat>(left, right)
+        .map(DiffVec)
+        .map_err(|e| anyhow::Error::new(DiffMatchPatchWrapper(e)).context("DiffMatchPatch error"))
 }
 
 fn files_diff(left: &str, right: &str) -> Result<DiffVec> {
