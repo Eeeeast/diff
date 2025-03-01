@@ -19,7 +19,7 @@ struct Cli {
 enum Commands {
     /// Get the diff between two inputs
     Get {
-        /// Left input (file or string)
+        /// Left input (app or file or string)
         left: String,
         /// Right input (file or string)
         right: String,
@@ -30,7 +30,8 @@ enum Commands {
     /// Generate example test cases
     Example {
         /// Number of test cases to generate
-        count: u16,
+        #[clap(short, long, default_value_t = 3)]
+        count: u8,
         /// Output file path
         path: Option<std::path::PathBuf>,
     },
@@ -68,12 +69,8 @@ impl Tester {
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
         let app = fs::canonicalize(program_path).context("Failed to canonicalize program path")?;
         let content = fs::read_to_string(test_file).context("Failed to read test file")?;
-        Ok(Self {
-            app,
-            tests: toml::from_str::<Tests>(&content)
-                .context("Failed to parse TOML file")?
-                .tests,
-        })
+        let tests = toml::from_str::<Tests>(&content)?.tests;
+        Ok(Self { app, tests })
     }
 }
 
@@ -85,37 +82,21 @@ fn write_file(path: &Path, data: &str) -> Result<()> {
     fs::write(path, data).with_context(|| format!("Failed to write to file: {}", path.display()))
 }
 
-fn serialize_test_data(count: u16) -> Result<String> {
-    toml::to_string(&Tests {
-        tests: vec![
-            Test {
-                note: Some("test".to_string()),
-                args: Some("arguments".to_string()),
-                input: Some("input".to_string()),
-                out: Some("output".to_string()),
-            };
-            count.into()
-        ],
-    })
-    .context("Failed to serialize test data")
+fn serialize_test_data(count: u8) -> Result<String> {
+    let test = Test {
+        note: Some("test".to_string()),
+        args: Some("arguments".to_string()),
+        input: Some("input".to_string()),
+        out: Some("output".to_string()),
+    };
+    toml::to_string(&vec![test; count.into()]).context("Failed to serialize test data")
 }
-
-#[derive(Debug)]
-struct DiffMatchPatchWrapper(diff_match_patch_rs::Error);
-
-impl std::fmt::Display for DiffMatchPatchWrapper {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "DiffMatchPatch Error: {:?}", self.0)
-    }
-}
-
-impl std::error::Error for DiffMatchPatchWrapper {}
 
 fn diff(left: &str, right: &str) -> Result<DiffVec> {
     let dmp = DiffMatchPatch::new();
     dmp.diff_main::<Compat>(left, right)
         .map(DiffVec)
-        .map_err(|e| anyhow::Error::new(DiffMatchPatchWrapper(e)).context("DiffMatchPatch error"))
+        .map_err(|e| anyhow::anyhow!("DiffMatchPatch error: {:?}", e))
 }
 
 fn files_diff(left: &str, right: &str) -> Result<DiffVec> {
@@ -150,15 +131,12 @@ impl std::fmt::Display for DiffVec {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for diff in &self.0 {
             let text = diff.data().iter().copied().collect::<String>();
-            write!(
-                f,
-                "{}",
-                match diff.op() {
-                    Ops::Delete => text.on_red(),
-                    Ops::Equal => text.normal(),
-                    Ops::Insert => text.on_cyan(),
-                }
-            )?;
+            let colored_text = match diff.op() {
+                Ops::Delete => text.on_red(),
+                Ops::Equal => text.normal(),
+                Ops::Insert => text.on_cyan(),
+            };
+            write!(f, "{}", colored_text)?;
         }
         Ok(())
     }

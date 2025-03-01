@@ -45,7 +45,7 @@ Run `diff --help` for detailed options.
 Compare two directly entered strings. The differences are highlighted in color.
 
 ```bash
-diff get --left "string1" --right "string2" --mode interactive
+diff get string1 string2 -m interactive
 ```
 
 ### Batch Mode
@@ -53,7 +53,7 @@ diff get --left "string1" --right "string2" --mode interactive
 Compare the contents of two files. Differences are shown with colored highlights.
 
 ```bash
-diff get --left file1.txt --right file2.txt --mode batch
+diff get file1.txt file2.txt -m batch
 ```
 
 ### Program Mode
@@ -61,7 +61,7 @@ diff get --left file1.txt --right file2.txt --mode batch
 Run a program with test cases and compare its output. Differences between expected and actual outputs are displayed in color.
 
 ```bash
-diff get --left my_program --right tests.toml --mode program
+diff get my_program tests.toml -m program
 ```
 
 ---
@@ -83,29 +83,17 @@ If no path is specified, the test cases will be printed to the console.
 Compare two strings:
 
 ```bash
-diff get --left "hello" --right "world" --mode interactive
+diff get hello world -m interactive
 ```
 
 Output (with colors):
 ```
-h[ello]w[orld]
+hell[w]o[rld]
 ```
 
-- **Red**: Deleted content (`[ello]`)
-- **Cyan**: Inserted content (`[orld]`)
-- **Default**: Unchanged content (`h` and `w`)
-
----
-
-## License
-
-This project is licensed under the MIT License.
-
----
-
-## Contact
-
-For questions or feedback, open an issue on the GitHub repository or email [your-email@example.com](mailto:your-email@example.com).
+- **Red**: Deleted content (`hell`)
+- **Cyan**: Inserted content (`[w]` and `[rld]`)
+- **Default**: Unchanged content (`o`)
 
 ---
 
