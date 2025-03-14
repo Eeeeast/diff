@@ -84,10 +84,10 @@ fn write_file(path: &Path, data: &str) -> Result<()> {
 
 fn serialize_test_data(count: u8) -> Result<String> {
     let test = Test {
-        note: Some("test".to_string()),
-        args: Some("arguments".to_string()),
-        input: Some("input".to_string()),
-        out: Some("output".to_string()),
+        note: Some("test".into()),
+        args: Some("arguments".into()),
+        input: Some("input".into()),
+        out: Some("output".into()),
     };
     toml::to_string(&vec![test; count.into()]).context("Failed to serialize test data")
 }
@@ -119,7 +119,7 @@ fn run_tests(tests: Vec<Test>, app: &Path) -> Result<()> {
         let output = child.wait_with_output()?;
         let expected = test.out.unwrap_or_default();
         let diff_result = diff(&expected, &String::from_utf8_lossy(&output.stdout))?;
-        println!("{}", test.note.unwrap_or_else(|| "test".to_string()));
+        println!("{}", test.note.unwrap_or_else(|| "test".into()));
         println!("{}", diff_result);
     }
     Ok(())
