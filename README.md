@@ -86,21 +86,10 @@ Compare two strings:
 diff get hello world -m interactive
 ```
 
-Output (with colors):
-```
-hell[w]o[rld]
-```
-
-- **Red**: Deleted content (`hell`)
-- **Cyan**: Inserted content (`[w]` and `[rld]`)
-- **Default**: Unchanged content (`o`)
-
----
+![Interactive Comparison](assets/diff.png)
 
 ### Notes on Colored Output
 
 - **Deleted Content**: Highlighted in **red**.
 - **Inserted Content**: Highlighted in **cyan**.
 - **Unchanged Content**: Displayed in the default text color.
-
-This makes it easy to visually identify differences between the compared inputs.
