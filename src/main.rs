@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
 use colored::Colorize;
-use diff_match_patch_rs::*;
+use diff_match_patch_rs::{Compat, DiffMatchPatch, Ops, dmp};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
@@ -75,7 +75,7 @@ impl Tester {
 }
 
 fn read_file(path: &str) -> Result<String> {
-    fs::read_to_string(path).with_context(|| format!("Failed to read file: {}", path))
+    fs::read_to_string(path).with_context(|| format!("Failed to read file: {path}"))
 }
 
 fn write_file(path: &Path, data: &str) -> Result<()> {
@@ -120,7 +120,7 @@ fn run_tests(tests: Vec<Test>, app: &Path) -> Result<()> {
         let expected = test.out.unwrap_or_default();
         let diff_result = diff(&expected, &String::from_utf8_lossy(&output.stdout))?;
         println!("{}", test.note.unwrap_or_else(|| "test".into()));
-        println!("{}", diff_result);
+        println!("{diff_result}");
     }
     Ok(())
 }
@@ -136,7 +136,7 @@ impl std::fmt::Display for DiffVec {
                 Ops::Equal => text.normal(),
                 Ops::Insert => text.on_cyan(),
             };
-            write!(f, "{}", colored_text)?;
+            write!(f, "{colored_text}")?;
         }
         Ok(())
     }
@@ -149,7 +149,7 @@ fn main() -> Result<()> {
         Commands::Get { left, right, mode } => match mode {
             Mode::Program => {
                 let tester = Tester::new(&left, &right)?;
-                run_tests(tester.tests, &tester.app)?
+                run_tests(tester.tests, &tester.app)?;
             }
             Mode::Interactive => println!("{}", diff(&left, &right)?),
             Mode::Batch => println!("{}", files_diff(&left, &right)?),
@@ -159,7 +159,7 @@ fn main() -> Result<()> {
             if let Some(file) = path {
                 write_file(&file, &data)?;
             } else {
-                println!("{}", data);
+                println!("{data}");
             }
         }
     }
