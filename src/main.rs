@@ -39,7 +39,7 @@ enum Commands {
 
 #[derive(ValueEnum, Clone, Debug)]
 enum Mode {
-    /// Run the programme in the console to run the tests
+    /// Run the programme in the console to run the tests in a YAML file
     Program,
     /// Compare directly entered data
     Interactive,
@@ -68,8 +68,10 @@ struct Tester {
 impl Tester {
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
         let app = fs::canonicalize(program_path).context("Failed to canonicalize program path")?;
-        let content = fs::read_to_string(test_file).context("Failed to read test file")?;
-        let tests = toml::from_str::<Tests>(&content)?.tests;
+        let file = std::fs::File::open(test_file).context("Failed to read test file")?;
+        let tests = serde_yaml::from_reader::<std::fs::File, Tests>(file)
+            .context("Failed to deserialize YAML")?
+            .tests;
         Ok(Self { app, tests })
     }
 }
@@ -89,7 +91,7 @@ fn serialize_test_data(count: u8) -> Result<String> {
         input: Some("input".into()),
         out: Some("output".into()),
     };
-    toml::to_string(&vec![test; count.into()]).context("Failed to serialize test data")
+    serde_yaml::to_string(&vec![test; count.into()]).context("Failed to serialize test data")
 }
 
 fn diff(left: &str, right: &str) -> Result<DiffVec> {
