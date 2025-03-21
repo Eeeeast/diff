@@ -67,10 +67,10 @@ struct Tester {
 
 impl Tester {
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
-        let app = fs::canonicalize(program_path).context("Failed to canonicalize program path")?;
+        let app = fs::canonicalize(program_path).context("Failed to canonicalise program path")?;
         let file = std::fs::File::open(test_file).context("Failed to read test file")?;
         let tests = serde_yaml::from_reader::<std::fs::File, Tests>(file)
-            .context("Failed to deserialize YAML")?
+            .context("Failed to deserialise YAML")?
             .tests;
         Ok(Self { app, tests })
     }
