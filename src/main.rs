@@ -91,7 +91,8 @@ fn serialize_test_data(count: u8) -> Result<String> {
         input: Some("input".into()),
         out: Some("output".into()),
     };
-    serde_yaml::to_string(&vec![test; count.into()]).context("Failed to serialize test data")
+    serde_yaml::to_string(&vec![test; count.into()])
+        .context("Failed to serialize test data to YAML")
 }
 
 fn diff(left: &str, right: &str) -> Result<DiffVec> {
