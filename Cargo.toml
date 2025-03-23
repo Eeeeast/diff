@@ -10,3 +10,6 @@ colored = "3.0.0"
 diff-match-patch-rs = "0.4.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_yaml = "0.9.34"
+
+[lints.clippy]
+pedantic = "warn"
