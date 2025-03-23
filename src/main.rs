@@ -67,10 +67,10 @@ struct Tester {
 
 impl Tester {
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
-        let app = fs::canonicalize(program_path).context("Failed to canonicalise program path")?;
+        let app = fs::canonicalize(program_path).context("Failed to canonicalize program path")?;
         let file = std::fs::File::open(test_file).context("Failed to read test file")?;
         let tests = serde_yaml::from_reader::<std::fs::File, Tests>(file)
-            .context("Failed to deserialise YAML")?
+            .context("Failed to deserialize YAML")?
             .tests;
         Ok(Self { app, tests })
     }
@@ -92,7 +92,7 @@ fn serialize_test_data(count: u8) -> Result<String> {
         out: Some("output".into()),
     };
     serde_yaml::to_string(&vec![test; count.into()])
-        .context("Failed to serialise test data to YAML")
+        .context("Failed to serialize test data to YAML")
 }
 
 fn diff(left: &str, right: &str) -> Result<DiffVec> {
