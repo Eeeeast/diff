@@ -3,22 +3,24 @@ use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use diff_match_patch_rs::{Compat, DiffMatchPatch, Ops, dmp};
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::Write;
-use std::path::Path;
-use std::process::{Command, Stdio};
+use std::{
+    fs,
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
+};
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    cmd: Commands,
+    command: Commands,
 }
 
 #[derive(Debug, clap::Subcommand)]
 enum Commands {
     /// Get the diff between two inputs
-    Get {
+    Diff {
         /// Left input (app or file or string)
         left: String,
         /// Right input (file or string)
@@ -28,27 +30,27 @@ enum Commands {
         mode: Mode,
     },
     /// Generate example test cases
-    Example {
+    Examples {
         /// Number of test cases to generate
         #[clap(short, long, default_value_t = 3)]
         count: u8,
-        /// Output file path
+        /// Output file path (prints to stdout if not provided)
         path: Option<std::path::PathBuf>,
     },
 }
 
 #[derive(ValueEnum, Clone, Debug)]
 enum Mode {
-    /// Run the programme in the console to run the tests in a YAML file
+    /// Run the program with test cases from a YAML file
     Program,
-    /// Compare directly entered data
+    /// Compare directly entered strings
     Interactive,
-    /// Compare a specified pair of files
+    /// Compare contents of specified files
     Batch,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
-struct Test {
+struct TestCase {
     note: Option<String>,
     args: Option<String>,
     input: Option<String>,
@@ -56,36 +58,80 @@ struct Test {
 }
 
 #[derive(Deserialize, Serialize, Clone)]
-struct Tests {
-    tests: Vec<Test>,
+struct TestSuite {
+    tests: Vec<TestCase>,
 }
 
-struct Tester {
-    app: std::path::PathBuf,
-    tests: Vec<Test>,
+struct TestRunner {
+    program_path: std::path::PathBuf,
+    test_cases: Vec<TestCase>,
 }
 
-impl Tester {
+impl TestRunner {
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
-        let app = fs::canonicalize(program_path).context("Failed to canonicalize program path")?;
-        let file = std::fs::File::open(test_file).context("Failed to read test file")?;
-        let tests = serde_yaml::from_reader::<std::fs::File, Tests>(file)
-            .context("Failed to deserialize YAML")?
+        let program_path =
+            fs::canonicalize(program_path).context("Failed to resolve program path")?;
+        let test_file = fs::File::open(test_file).context("Failed to open test file")?;
+        let test_cases = serde_yaml::from_reader::<_, TestSuite>(test_file)
+            .context("Failed to parse test file")?
             .tests;
-        Ok(Self { app, tests })
+
+        Ok(Self {
+            program_path,
+            test_cases,
+        })
+    }
+
+    pub fn run(&self) -> Result<()> {
+        for case in &self.test_cases {
+            self.run_test_case(case)?;
+        }
+        Ok(())
+    }
+
+    fn run_test_case(&self, case: &TestCase) -> Result<()> {
+        let mut command = Command::new(&self.program_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .args(case.args.as_deref().unwrap_or_default().split_whitespace())
+            .spawn()
+            .context("Failed to start program")?;
+
+        if let Some(input) = &case.input {
+            command
+                .stdin
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("Failed to get stdin"))?
+                .write_all(input.as_bytes())
+                .context("Failed to write input to program")?;
+        }
+
+        let output = command
+            .wait_with_output()
+            .context("Failed to get program output")?;
+
+        let actual_output = String::from_utf8_lossy(&output.stdout);
+        let expected_output = case.out.as_deref().unwrap_or_default();
+
+        let diff = compute_diff(expected_output, &actual_output)?;
+
+        println!("{}", case.note.as_deref().unwrap_or("Test case").bold());
+        println!("{diff}");
+
+        Ok(())
     }
 }
 
 fn read_file(path: &str) -> Result<String> {
-    fs::read_to_string(path).with_context(|| format!("Failed to read file: {path}"))
+    fs::read_to_string(path).context(format!("Failed to read file: {path}"))
 }
 
 fn write_file(path: &Path, data: &str) -> Result<()> {
-    fs::write(path, data).with_context(|| format!("Failed to write to file: {}", path.display()))
+    fs::write(path, data).context(format!("Failed to write to file: {}", path.display()))
 }
 
 fn serialize_test_data(count: u8) -> Result<String> {
-    let test = Test {
+    let test = TestCase {
         note: Some("test".into()),
         args: Some("arguments".into()),
         input: Some("input".into()),
@@ -95,37 +141,15 @@ fn serialize_test_data(count: u8) -> Result<String> {
         .context("Failed to serialize test data to YAML")
 }
 
-fn diff(left: &str, right: &str) -> Result<DiffVec> {
+fn compute_diff(left: &str, right: &str) -> Result<DiffVec> {
     let dmp = DiffMatchPatch::new();
     dmp.diff_main::<Compat>(left, right)
         .map(DiffVec)
-        .map_err(|e| anyhow::anyhow!("DiffMatchPatch error: {:?}", e))
+        .map_err(|e| anyhow::anyhow!("Diff computation failed: {e:?}"))
 }
 
 fn files_diff(left: &str, right: &str) -> Result<DiffVec> {
-    diff(&read_file(left)?, &read_file(right)?)
-}
-
-fn run_tests(tests: Vec<Test>, app: &Path) -> Result<()> {
-    for test in tests {
-        let mut child = Command::new(app)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .args(test.args.unwrap_or_default().split_whitespace())
-            .spawn()
-            .context("Failed to spawn child process")?;
-
-        if let Some(input) = test.input {
-            child.stdin.as_mut().unwrap().write_all(input.as_bytes())?;
-        }
-
-        let output = child.wait_with_output()?;
-        let expected = test.out.unwrap_or_default();
-        let diff_result = diff(&expected, &String::from_utf8_lossy(&output.stdout))?;
-        println!("{}", test.note.unwrap_or_else(|| "test".into()));
-        println!("{diff_result}");
-    }
-    Ok(())
+    compute_diff(&read_file(left)?, &read_file(right)?)
 }
 
 struct DiffVec(Vec<crate::dmp::Diff<char>>);
@@ -148,16 +172,15 @@ impl std::fmt::Display for DiffVec {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match cli.cmd {
-        Commands::Get { left, right, mode } => match mode {
+    match cli.command {
+        Commands::Diff { left, right, mode } => match mode {
             Mode::Program => {
-                let tester = Tester::new(&left, &right)?;
-                run_tests(tester.tests, &tester.app)?;
+                TestRunner::new(&left, &right)?.run()?;
             }
-            Mode::Interactive => println!("{}", diff(&left, &right)?),
+            Mode::Interactive => println!("{}", compute_diff(&left, &right)?),
             Mode::Batch => println!("{}", files_diff(&left, &right)?),
         },
-        Commands::Example { path, count } => {
+        Commands::Examples { path, count } => {
             let data = serialize_test_data(count)?;
             if let Some(file) = path {
                 write_file(&file, &data)?;
