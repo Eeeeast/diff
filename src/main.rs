@@ -46,7 +46,7 @@ enum Mode {
     /// Compare directly entered strings
     Interactive,
     /// Compare contents of specified files
-    Batch,
+    File,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -64,7 +64,7 @@ struct TestSuite {
 
 struct TestRunner {
     program_path: std::path::PathBuf,
-    test_cases: Vec<TestCase>,
+    test_cases: TestSuite,
 }
 
 impl TestRunner {
@@ -73,8 +73,7 @@ impl TestRunner {
             fs::canonicalize(program_path).context("Failed to resolve program path")?;
         let test_file = fs::File::open(test_file).context("Failed to open test file")?;
         let test_cases = serde_yaml::from_reader::<_, TestSuite>(test_file)
-            .context("Failed to parse test file")?
-            .tests;
+            .context("Failed to parse test file")?;
 
         Ok(Self {
             program_path,
@@ -83,7 +82,7 @@ impl TestRunner {
     }
 
     pub fn run(&self) -> Result<()> {
-        for case in &self.test_cases {
+        for case in &self.test_cases.tests {
             self.run_test_case(case)?;
         }
         Ok(())
@@ -178,7 +177,7 @@ fn main() -> Result<()> {
                 TestRunner::new(&left, &right)?.run()?;
             }
             Mode::Interactive => println!("{}", compute_diff(&left, &right)?),
-            Mode::Batch => println!("{}", files_diff(&left, &right)?),
+            Mode::File => println!("{}", files_diff(&left, &right)?),
         },
         Commands::Examples { path, count } => {
             let data = serialize_test_data(count)?;
