@@ -4,20 +4,19 @@ use colored::Colorize;
 use diff_match_patch_rs::{Compat, DiffMatchPatch, Ops, dmp};
 use serde::{Deserialize, Serialize};
 use std::{
-    fs,
     io::Write,
     path::Path,
     process::{Command, Stdio},
 };
 
-#[derive(Debug, Parser)]
+#[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
 
-#[derive(Debug, clap::Subcommand)]
+#[derive(clap::Subcommand)]
 enum Commands {
     /// Get the diff between two inputs
     Diff {
@@ -40,7 +39,7 @@ enum Commands {
     },
 }
 
-#[derive(ValueEnum, Clone, Debug)]
+#[derive(ValueEnum, Clone)]
 enum Mode {
     /// Run the program with test cases from a YAML file
     Program,
@@ -58,7 +57,7 @@ struct TestCase {
     out: Option<String>,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize)]
 struct TestSuite {
     tests: Vec<TestCase>,
 }
@@ -71,8 +70,8 @@ struct TestRunner {
 impl TestRunner {
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
         let program_path =
-            fs::canonicalize(program_path).context("Failed to resolve program path")?;
-        let test_file = fs::File::open(test_file).context("Failed to open test file")?;
+            std::fs::canonicalize(program_path).context("Failed to resolve program path")?;
+        let test_file = std::fs::File::open(test_file).context("Failed to open test file")?;
         let test_cases = serde_yaml::from_reader::<_, TestSuite>(test_file)
             .context("Failed to parse test file")?;
 
@@ -123,11 +122,11 @@ impl TestRunner {
 }
 
 fn read_file(path: &str) -> Result<String> {
-    fs::read_to_string(path).context(format!("Failed to read file: {path}"))
+    std::fs::read_to_string(path).context(format!("Failed to read file: {path}"))
 }
 
 fn write_file(path: &Path, data: &str) -> Result<()> {
-    fs::write(path, data).context(format!("Failed to write to file: {}", path.display()))
+    std::fs::write(path, data).context(format!("Failed to write to file: {}", path.display()))
 }
 
 fn serialize_test_data(count: u8) -> Result<String> {
