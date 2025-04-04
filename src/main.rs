@@ -30,9 +30,10 @@ enum Commands {
         mode: Mode,
     },
     /// Generate example test cases
-    Examples {
+    Example {
         /// Number of test cases to generate
         #[clap(short, long, default_value_t = 3)]
+        #[arg(value_parser = clap::value_parser!(u8).range(1..))]
         count: u8,
         /// Output file path (prints to stdout if not provided)
         path: Option<std::path::PathBuf>,
@@ -179,7 +180,7 @@ fn main() -> Result<()> {
             Mode::Interactive => println!("{}", compute_diff(&left, &right)?),
             Mode::File => println!("{}", files_diff(&left, &right)?),
         },
-        Commands::Examples { path, count } => {
+        Commands::Example { path, count } => {
             let data = serialize_test_data(count)?;
             if let Some(file) = path {
                 write_file(&file, &data)?;
