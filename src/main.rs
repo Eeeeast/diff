@@ -1,11 +1,9 @@
 use anyhow::{Context, Result};
 use clap::{Parser, ValueEnum};
-use colored::Colorize;
 use diff_match_patch_rs::{Compat, DiffMatchPatch, Ops, dmp};
 use serde::{Deserialize, Serialize};
 use std::{
     io::Write,
-    path::Path,
     process::{Command, Stdio},
 };
 
@@ -29,14 +27,7 @@ enum Commands {
         mode: Mode,
     },
     /// Generate example test cases
-    Example {
-        /// Number of test cases to generate
-        #[clap(short, long, default_value_t = 3)]
-        #[arg(value_parser = clap::value_parser!(u8).range(1..))]
-        count: u8,
-        /// Output file path (prints to stdout if not provided)
-        path: Option<std::path::PathBuf>,
-    },
+    Example,
 }
 
 #[derive(ValueEnum, Clone)]
@@ -66,6 +57,22 @@ struct TestRunner {
     program_path: std::path::PathBuf,
     test_cases: TestSuite,
 }
+
+const STYLE_RED: anstyle::Style = anstyle::Style::new().bg_color(Some(anstyle::Color::Ansi(
+    anstyle::Ansi256Color(5)
+        .into_ansi()
+        .expect("within 4-bit color range"),
+)));
+const STYLE_GREEN: anstyle::Style = anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(
+    anstyle::Ansi256Color(2)
+        .into_ansi()
+        .expect("within 4-bit color range"),
+)));
+const STYLE_CYAN: anstyle::Style = anstyle::Style::new().bg_color(Some(anstyle::Color::Ansi(
+    anstyle::Ansi256Color(6)
+        .into_ansi()
+        .expect("within 4-bit color range"),
+)));
 
 impl TestRunner {
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
@@ -114,7 +121,10 @@ impl TestRunner {
 
         let diff = compute_diff(expected_output, &actual_output)?;
 
-        println!("{}", case.note.as_deref().unwrap_or("Test case").bold());
+        println!(
+            "{STYLE_GREEN}{}{STYLE_GREEN:#}",
+            case.note.as_deref().unwrap_or("Test case")
+        );
         println!("{diff}");
 
         Ok(())
@@ -123,21 +133,6 @@ impl TestRunner {
 
 fn read_file(path: &str) -> Result<String> {
     std::fs::read_to_string(path).context(format!("Failed to read file: {path}"))
-}
-
-fn write_file(path: &Path, data: &str) -> Result<()> {
-    std::fs::write(path, data).context(format!("Failed to write to file: {}", path.display()))
-}
-
-fn serialize_test_data(count: u8) -> Result<String> {
-    let test = TestCase {
-        note: Some("test".into()),
-        args: Some("arguments".into()),
-        input: Some("input".into()),
-        out: Some("output".into()),
-    };
-    serde_yaml::to_string(&vec![test; count.into()])
-        .context("Failed to serialize test data to YAML")
 }
 
 fn compute_diff(left: &str, right: &str) -> Result<DiffVec> {
@@ -157,16 +152,19 @@ impl std::fmt::Display for DiffVec {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         for diff in &self.0 {
             let text = diff.data().iter().copied().collect::<String>();
-            let colored_text = match diff.op() {
-                Ops::Delete => text.on_red(),
-                Ops::Equal => text.normal(),
-                Ops::Insert => text.on_cyan(),
+            match diff.op() {
+                Ops::Delete => write!(f, "{STYLE_RED}{text}{STYLE_RED:#}")?,
+                Ops::Equal => write!(f, "{text}")?,
+                Ops::Insert => write!(f, "{STYLE_CYAN}{text}{STYLE_CYAN:#}")?,
             };
-            write!(f, "{colored_text}")?;
         }
         Ok(())
     }
 }
+
+const EXAMPLE_STRING: &str = "- note: test\n  args: arguments\n  input: input\n  out: output\n\
+     - note: test\n  args: arguments\n  input: input\n  out: output\n\
+     - note: test\n  args: arguments\n  input: input\n  out: output";
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -179,13 +177,8 @@ fn main() -> Result<()> {
             Mode::Interactive => println!("{}", compute_diff(&left, &right)?),
             Mode::File => println!("{}", files_diff(&left, &right)?),
         },
-        Commands::Example { path, count } => {
-            let data = serialize_test_data(count)?;
-            if let Some(file) = path {
-                write_file(&file, &data)?;
-            } else {
-                println!("{data}");
-            }
+        Commands::Example => {
+            println!("{EXAMPLE_STRING}");
         }
     }
     Ok(())
