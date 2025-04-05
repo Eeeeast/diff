@@ -53,11 +53,6 @@ struct TestSuite {
     tests: Vec<TestCase>,
 }
 
-struct TestRunner {
-    program_path: std::path::PathBuf,
-    test_cases: TestSuite,
-}
-
 const STYLE_RED: anstyle::Style = anstyle::Style::new().bg_color(Some(anstyle::Color::Ansi(
     anstyle::Ansi256Color(5)
         .into_ansi()
@@ -73,6 +68,11 @@ const STYLE_CYAN: anstyle::Style = anstyle::Style::new().bg_color(Some(anstyle::
         .into_ansi()
         .expect("within 4-bit color range"),
 )));
+
+struct TestRunner {
+    program_path: std::path::PathBuf,
+    test_cases: TestSuite,
+}
 
 impl TestRunner {
     pub fn new(program_path: &str, test_file: &str) -> Result<Self> {
@@ -116,16 +116,22 @@ impl TestRunner {
             .wait_with_output()
             .context("Failed to get program output")?;
 
-        let actual_output = String::from_utf8_lossy(&output.stdout);
         let expected_output = case.out.as_deref().unwrap_or_default();
+        let actual_output = String::from_utf8_lossy(&output.stdout);
 
-        let diff = compute_diff(expected_output, &actual_output)?;
+        if expected_output == actual_output {
+            println!(
+                "{STYLE_GREEN}{}{STYLE_GREEN:#}\n{actual_output}",
+                case.note.as_deref().unwrap_or("Unnamed test case")
+            );
+        } else {
+            let diff = compute_diff(expected_output, &actual_output)?;
 
-        println!(
-            "{STYLE_GREEN}{}{STYLE_GREEN:#}",
-            case.note.as_deref().unwrap_or("Test case")
-        );
-        println!("{diff}");
+            println!(
+                "{STYLE_RED}{}{STYLE_RED:#}\n{diff}",
+                case.note.as_deref().unwrap_or("Unnamed test case")
+            );
+        }
 
         Ok(())
     }
@@ -153,18 +159,29 @@ impl std::fmt::Display for DiffVec {
         for diff in &self.0 {
             let text = diff.data().iter().copied().collect::<String>();
             match diff.op() {
-                Ops::Delete => write!(f, "{STYLE_RED}{text}{STYLE_RED:#}")?,
-                Ops::Equal => write!(f, "{text}")?,
-                Ops::Insert => write!(f, "{STYLE_CYAN}{text}{STYLE_CYAN:#}")?,
-            };
+                Ops::Delete => write!(f, "{STYLE_RED}{text}{STYLE_RED:#}"),
+                Ops::Equal => write!(f, "{text}"),
+                Ops::Insert => write!(f, "{STYLE_CYAN}{text}{STYLE_CYAN:#}"),
+            }?;
         }
         Ok(())
     }
 }
 
-const EXAMPLE_STRING: &str = "- note: test\n  args: arguments\n  input: input\n  out: output\n\
-     - note: test\n  args: arguments\n  input: input\n  out: output\n\
-     - note: test\n  args: arguments\n  input: input\n  out: output";
+const EXAMPLE_STRING: &str = r"
+ - note: test
+   args: arguments
+   input: input
+   out: output
+ - note: test
+   args: arguments
+   input: input
+   out: output
+ - note: test
+   args: arguments
+   input: input
+   out: output
+";
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
