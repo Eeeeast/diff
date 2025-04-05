@@ -31,8 +31,8 @@ A simple command-line tool for computing diffs between strings, files, or progra
 
 ### Basic Commands
 
-- **Get**: Compute the diff between two inputs.
-- **Example**: Generate example test cases in TOML format.
+- **Diff**: Compute the diff between two inputs.
+- **Example**: Generate example test cases in YAML format.
 
 Run `diff --help` for detailed options.
 
@@ -45,7 +45,7 @@ Run `diff --help` for detailed options.
 Compare two directly entered strings. The differences are highlighted in color.
 
 ```bash
-diff get string1 string2 -m interactive
+diff diff string1 string2 -m interactive
 ```
 
 ### Batch Mode
@@ -53,7 +53,7 @@ diff get string1 string2 -m interactive
 Compare the contents of two files. Differences are shown with colored highlights.
 
 ```bash
-diff get file1.txt file2.txt -m batch
+diff diff file1.txt file2.txt -m batch
 ```
 
 ### Program Mode
@@ -61,20 +61,18 @@ diff get file1.txt file2.txt -m batch
 Run a program with test cases and compare its output. Differences between expected and actual outputs are displayed in color.
 
 ```bash
-diff get my_program tests.toml -m program
+diff diff my_program tests.yaml -m program
 ```
 
 ---
 
 ## Generating Test Cases
 
-Generate example test cases in TOML format.
+Generate 3 example test cases in YAML format.
 
 ```bash
-diff example --count 5 --path tests.toml
+diff example
 ```
-
-If no path is specified, the test cases will be printed to the console.
 
 ---
 
