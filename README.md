@@ -53,7 +53,7 @@ diff diff string1 string2 -m interactive
 Compare the contents of two files. Differences are shown with colored highlights.
 
 ```bash
-diff diff file1.txt file2.txt -m batch
+diff diff file1.txt file2.txt -m file
 ```
 
 ### Program Mode
@@ -81,13 +81,7 @@ diff example
 Compare two strings:
 
 ```bash
-diff get hello world -m interactive
+diff diff 1234 1233 -m interactive
 ```
 
 ![Interactive Comparison](assets/diff.png)
-
-### Notes on Colored Output
-
-- **Deleted Content**: Highlighted in **red**.
-- **Inserted Content**: Highlighted in **cyan**.
-- **Unchanged Content**: Displayed in the default text color.
