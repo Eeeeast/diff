@@ -53,21 +53,12 @@ struct TestSuite {
     tests: Vec<TestCase>,
 }
 
-const STYLE_RED: anstyle::Style = anstyle::Style::new().bg_color(Some(anstyle::Color::Ansi(
-    anstyle::Ansi256Color(5)
-        .into_ansi()
-        .expect("within 4-bit color range"),
-)));
-const STYLE_GREEN: anstyle::Style = anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(
-    anstyle::Ansi256Color(2)
-        .into_ansi()
-        .expect("within 4-bit color range"),
-)));
-const STYLE_CYAN: anstyle::Style = anstyle::Style::new().bg_color(Some(anstyle::Color::Ansi(
-    anstyle::Ansi256Color(6)
-        .into_ansi()
-        .expect("within 4-bit color range"),
-)));
+const STYLE_RED: anstyle::Style =
+    anstyle::Style::new().bg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Red)));
+const STYLE_GREEN: anstyle::Style =
+    anstyle::Style::new().bg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green)));
+const STYLE_CYAN: anstyle::Style =
+    anstyle::Style::new().bg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Cyan)));
 
 struct TestRunner {
     program_path: std::path::PathBuf,
